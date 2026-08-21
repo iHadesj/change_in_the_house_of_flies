@@ -1,0 +1,66 @@
+LETRA
+=====
+
+O projeto nao distribui letra nenhuma: e material protegido. Voce coloca a sua
+aqui, ou cola direto no app (botao LETRA), e nesse caso ela fica salva so no
+seu navegador.
+
+Duas formas de carregar por arquivo:
+
+1) change.txt  -- letra crua, uma linha por linha
+2) change.lrc  -- letra ja sincronizada
+
+O app procura nesta ordem: o que voce colou no navegador, depois change.lrc,
+depois change.txt. Os dois arquivos estao no .gitignore.
+
+
+FORMATO DO .txt
+---------------
+
+Uma linha da musica por linha do arquivo. Linha em branco separa blocos --
+estrofe, refrao, ponte. Esse bloco e a unidade de trabalho do modo SYNC: ao
+marcar uma secao, ela para na fronteira do bloco em vez de vazar pro resto.
+
+Linha inteira entre parenteses ou colchetes que nao seja um cabecalho
+conhecido -- (Hey), [x2], (Check) -- continua sendo letra, nao some.
+
+Cabecalho entre colchetes marca a parte da musica -- e o que liga os efeitos
+de intensidade quando o refrao entra:
+
+    [verso]
+    primeira linha
+    segunda linha
+
+    [refrao]
+    primeira linha do refrao
+
+Cabecalhos aceitos: intro, verso, pre, refrao (ou chorus/hook), ponte,
+break, outro, instrumental.
+
+
+FORMATO DO .lrc
+---------------
+
+Padrao LRC: [mm:ss.cc] no comeco de cada linha. Para marcar a secao, use
+{refrao} logo depois do tempo -- vale dali ate a proxima marcacao:
+
+    [00:42.15]{refrao}primeira linha do refrao
+
+
+SINCRONIZANDO
+-------------
+
+Nao da pra adivinhar os tempos da faixa, entao o app traz um sincronizador:
+
+1. Carregue a letra (arquivo ou colando).
+2. Abra LETRA e ligue o botao SYNC.
+3. De play e aperte MARCAR (ou Enter) no instante em que cada linha comeca.
+4. Errou por pouco? -0,25s / +0,25s ajustam a ultima marcada.
+5. Toque numa linha pra mover o cursor pra ela.
+6. Marque as secoes: escolha REFRAO com o cursor dentro do refrao e o bloco
+   inteiro e pintado. Se o refrao se repete igual varias vezes, o botao
+   IGUAIS aplica a mesma secao a todos os blocos de texto identico de uma vez.
+7. BAIXAR .LRC salva o resultado. Ponha o arquivo nesta pasta como change.lrc
+   pra valer em qualquer navegador -- sem isso, fica so no seu.
+
+Fora do modo SYNC, tocar numa linha pula a musica pra ela.

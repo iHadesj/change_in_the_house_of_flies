@@ -1,0 +1,29 @@
+{
+  "name": "Change (In The House Of Flies) — Track Experience",
+  "short_name": "Change",
+  "description": "Uma experiência interativa inspirada em Change (In The House Of Flies), do Deftones.",
+  "lang": "pt-BR",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08070a",
+  "theme_color": "#08070a",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    {
+      "src": "/assets/change-app-icon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/change-icon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

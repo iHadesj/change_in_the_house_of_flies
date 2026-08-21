@@ -1,0 +1,6 @@
+Coloque o arquivo da música nesta pasta com o nome:
+
+change.mp3
+
+O player também permite escolher ou arrastar um MP3 diretamente na página.
+Nesse caso, o arquivo fica somente no navegador e não é enviado para nenhum servidor.
