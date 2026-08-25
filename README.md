@@ -4,7 +4,7 @@ Microsite interativo inspirado no clima de **Change (In The House Of Flies)**, d
 Deftones, com player offline, espectro de áudio em tempo real, letra sincronizada,
 atalhos de teclado e layout responsivo.
 
-Mesma proposta do projeto `nookie`, com direção de arte própria: paleta White Pony
+paleta White Pony
 (osso, violeta baço, preto quase azul), tipografia serifada em vez do Impact,
 fundo procedural com moscas atravessando a tela e o pulso do refrão no andamento
 arrastado da faixa (92 BPM).
