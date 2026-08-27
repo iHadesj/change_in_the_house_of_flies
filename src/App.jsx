@@ -4,14 +4,11 @@ import {
   BookOpen,
   Bug,
   Copy,
-  Disc3,
   Download,
-  Headphones,
-  Maximize2,
   Mic2,
   Pause,
   Play,
-  RotateCcw,
+  SkipBack,
   Trash2,
   Upload,
   Volume2,
@@ -30,10 +27,14 @@ import {
   formatTimestamp,
   parseLyrics,
   readStoredLyrics,
-  sectionAt,
   toLrc,
   writeStoredLyrics,
 } from './lyrics.js'
+import { FlyField, SwarmMeter } from './FlyCanvas.jsx'
+import House from './House.jsx'
+import TypedLine from './TypedLine.jsx'
+import { MEANING, MEANING_LEAD, splitKeywords } from './meaning.js'
+import { IS_APPLE_MOBILE, IS_TOUCH, useCssVar, useReducedMotion } from './perf.js'
 
 const DEFAULT_DURATION = '04:58'
 const AUDIO_PATH = `${import.meta.env.BASE_URL}music/change.mp3`
@@ -43,26 +44,11 @@ const LYRICS_PATHS = [
   `${import.meta.env.BASE_URL}lyrics/change.txt`,
 ]
 
-// No iOS/iPadOS, rotear o <audio> pelo Web Audio API (createMediaElementSource)
-// faz o som morrer assim que a tela apaga ou o app vai pro fundo: o AudioContext
-// é interrompido pelo sistema. Só o elemento de mídia "puro" sobrevive em background.
-// Então nesses aparelhos o espectro roda em modo simulado e o áudio fica intacto.
-const IS_APPLE_MOBILE =
-  typeof navigator !== 'undefined' &&
-  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (/Mac/.test(navigator.userAgent) && navigator.maxTouchPoints > 1))
-
-// Moscas que atravessam a tela devagar. Posição e ritmo fixos por índice: um
-// valor aleatório mudaria a cada render e cortaria a animação no meio.
-const FLIES = [
-  { top: '18%', left: '8%', delay: '0s', duration: '31s', scale: 0.9 },
-  { top: '34%', left: '72%', delay: '-6s', duration: '27s', scale: 1.15 },
-  { top: '61%', left: '22%', delay: '-13s', duration: '35s', scale: 0.75 },
-  { top: '12%', left: '54%', delay: '-19s', duration: '24s', scale: 1 },
-  { top: '76%', left: '63%', delay: '-3s', duration: '38s', scale: 1.3 },
-  { top: '47%', left: '41%', delay: '-24s', duration: '29s', scale: 0.65 },
-  { top: '88%', left: '11%', delay: '-9s', duration: '33s', scale: 1.05 },
-  { top: '26%', left: '89%', delay: '-16s', duration: '26s', scale: 0.85 },
+const STAGES = [
+  ['01', 'OBSERVAÇÃO', 'A casa ainda de pé. Alguém olha.'],
+  ['02', 'METAMORFOSE', 'O corpo do outro deixa de ser o mesmo.'],
+  ['03', 'ASAS ARRANCADAS', 'O riso vem depois da queda.'],
+  ['04', 'ZUMBIDO', 'Não sobrou casa. Só o que mora nela.'],
 ]
 
 /**
@@ -117,78 +103,17 @@ function formatTime(seconds) {
   return `${String(minutes).padStart(2, '0')}:${String(remaining).padStart(2, '0')}`
 }
 
-function Spectrum({ analyser, isPlaying, audioRef, isChorus }) {
-  const canvasRef = useRef(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    const context = canvas.getContext('2d')
-    let frameId
-    let tick = 0
-    const data = analyser ? new Uint8Array(analyser.frequencyBinCount) : null
-    const smoothed = []
-
-    const render = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      const width = canvas.clientWidth
-      const height = canvas.clientHeight
-
-      if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-        canvas.width = width * dpr
-        canvas.height = height * dpr
-      }
-
-      context.setTransform(dpr, 0, 0, dpr, 0, 0)
-      context.clearRect(0, 0, width, height)
-
-      if (analyser && isPlaying) analyser.getByteFrequencyData(data)
-
-      const bars = Math.max(20, Math.floor(width / 8))
-      const gap = 3
-      const barWidth = Math.max(2, width / bars - gap)
-
-      const clock = audioRef?.current?.currentTime ?? tick * 0.016
-
-      for (let index = 0; index < bars; index += 1) {
-        let value
-        if (analyser && isPlaying) {
-          const bin = Math.floor((index / bars) * data.length * 0.72)
-          value = data[bin] / 255
-        } else if (isPlaying) {
-          // Modo simulado (iOS): sem analyser, mas o desenho continua acompanhando o tempo da faixa.
-          const rolloff = 1 - (index / bars) * 0.55
-          const raw =
-            0.12 +
-            (Math.abs(Math.sin(clock * 3.1 + index * 0.87)) * 0.34 +
-              Math.abs(Math.sin(clock * 7.4 + index * 2.31)) * 0.2 +
-              Math.abs(Math.sin(clock * 1.2 + index * 0.29)) * 0.24) *
-              rolloff
-          const previous = smoothed[index] ?? raw
-          value = previous + (raw - previous) * 0.22
-          smoothed[index] = value
-        } else {
-          value = 0.06 + Math.abs(Math.sin(index * 1.7 + tick * 0.01)) * 0.08
-          smoothed[index] = value
-        }
-
-        // No refrão as barras crescem e o contraste sobe.
-        const barHeight = Math.max(2, value * height * 0.9 * (isChorus ? 1.3 : 1))
-        const x = index * (barWidth + gap)
-        const y = (height - barHeight) / 2
-        if (isChorus) context.fillStyle = index % 3 === 0 ? '#efeaf6' : '#9a76d6'
-        else context.fillStyle = index % 5 === 0 ? '#d9d6d1' : '#6b539a'
-        context.fillRect(x, y, barWidth, barHeight)
-      }
-
-      tick += isPlaying ? 1 : 0.2
-      frameId = requestAnimationFrame(render)
-    }
-
-    render()
-    return () => cancelAnimationFrame(frameId)
-  }, [analyser, audioRef, isChorus, isPlaying])
-
-  return <canvas ref={canvasRef} className="spectrum" aria-hidden="true" />
+/** Texto com as palavras-chave marcadas pra falhar na tela. */
+function Prose({ text }) {
+  return splitKeywords(text).map((part, index) =>
+    part.key ? (
+      <em className="decay-word" key={index} style={{ '--d': index % 9 }}>
+        {part.text}
+      </em>
+    ) : (
+      <Fragment key={index}>{part.text}</Fragment>
+    ),
+  )
 }
 
 function App() {
@@ -202,6 +127,9 @@ function App() {
   const audioContextRef = useRef(null)
   const sourceNodeRef = useRef(null)
   const objectUrlRef = useRef(null)
+  const flyFieldRef = useRef(null)
+  const swarmTimersRef = useRef({ hold: 0, calm: 0 })
+  const pointerFrameRef = useRef(0)
 
   const [isPlaying, setIsPlaying] = useState(false)
   const [duration, setDuration] = useState(0)
@@ -210,9 +138,10 @@ function App() {
   const [muted, setMuted] = useState(false)
   const [analyser, setAnalyser] = useState(null)
   const [dragging, setDragging] = useState(false)
-  const [trackSource, setTrackSource] = useState('ARQUIVO LOCAL')
-  const [message, setMessage] = useState('PRONTO PARA O SEU MP3')
+  const [trackSource, setTrackSource] = useState('FITA LOCAL')
+  const [message, setMessage] = useState('AGUARDANDO FITA')
   const [showMeaning, setShowMeaning] = useState(false)
+  const [infested, setInfested] = useState(false)
 
   const [showLyrics, setShowLyrics] = useState(false)
   const [syncMode, setSyncMode] = useState(false)
@@ -222,7 +151,13 @@ function App() {
   const [activeLine, setActiveLine] = useState(-1)
   const [syncCursor, setSyncCursor] = useState(0)
 
-  const progress = duration ? (currentTime / duration) * 100 : 0
+  const reduced = useReducedMotion()
+  const writeDecay = useCssVar(rootRef, '--decay')
+  const writeIntensity = useCssVar(rootRef, '--intensity')
+
+  const decay = duration ? Math.min(1, currentTime / duration) : 0
+  const progress = decay * 100
+  const rotting = decay > 0.22
 
   const closeMeaning = useCallback(() => setShowMeaning(false), [])
   const closeLyrics = useCallback(() => setShowLyrics(false), [])
@@ -263,20 +198,20 @@ function App() {
       setupAudio()
       try {
         await audio.play()
-        setMessage('TOCANDO AGORA')
+        setMessage('RODANDO')
       } catch {
-        setMessage('ADICIONE OU SELECIONE O MP3')
+        setMessage('SEM FITA — ESCOLHA UM MP3')
       }
     } else {
       audio.pause()
-      setMessage('PAUSADO')
+      setMessage('PAUSA')
     }
   }, [setupAudio])
 
   const loadFile = useCallback(
     async (file) => {
       if (!file || (!file.type.startsWith('audio/') && !file.name.toLowerCase().endsWith('.mp3'))) {
-        setMessage('ESSE ARQUIVO NÃO PARECE SER ÁUDIO')
+        setMessage('ISSO NÃO É ÁUDIO')
         return
       }
 
@@ -289,17 +224,56 @@ function App() {
       audio.src = objectUrl
       audio.load()
       setTrackSource(file.name.toUpperCase())
-      setMessage('ARQUIVO CARREGADO')
+      setMessage('FITA INSERIDA')
       setCurrentTime(0)
 
       setupAudio()
       try {
         await audio.play()
       } catch {
-        setMessage('APERTE PLAY PARA COMEÇAR')
+        setMessage('APERTE PLAY')
       }
     },
     [setupAudio],
+  )
+
+  /* --------------------------------------------------------- easter egg */
+
+  const swarm = useCallback(
+    (x, y) => {
+      if (reduced) return
+      flyFieldRef.current?.burst(x, y, 400)
+      navigator.vibrate?.(18)
+      setInfested(true)
+      window.clearTimeout(swarmTimersRef.current.calm)
+      swarmTimersRef.current.calm = window.setTimeout(() => setInfested(false), 1900)
+    },
+    [reduced],
+  )
+
+  const startSwarm = useCallback(
+    (event) => {
+      const x = event.clientX ?? window.innerWidth / 2
+      const y = event.clientY ?? window.innerHeight / 3
+      swarm(x, y)
+      // Segurar continua alimentando o enxame em vez de soltar tudo de uma vez.
+      window.clearInterval(swarmTimersRef.current.hold)
+      swarmTimersRef.current.hold = window.setInterval(() => swarm(x, y), 620)
+    },
+    [swarm],
+  )
+
+  const endSwarm = useCallback(() => {
+    window.clearInterval(swarmTimersRef.current.hold)
+    swarmTimersRef.current.hold = 0
+  }, [])
+
+  useEffect(
+    () => () => {
+      window.clearInterval(swarmTimersRef.current.hold)
+      window.clearTimeout(swarmTimersRef.current.calm)
+    },
+    [],
   )
 
   /* ---------------------------------------------------------------- letra */
@@ -313,6 +287,18 @@ function App() {
         .filter((line) => Number.isFinite(line.time)),
     [lyrics],
   )
+
+  // Quanto tempo cada linha tem em cena — é o que dita a velocidade da máquina
+  // de escrever: a linha precisa terminar antes da próxima entrar.
+  const budgets = useMemo(() => {
+    const map = new Map()
+    timedLines.forEach((line, index) => {
+      const next = timedLines[index + 1]
+      const end = next ? next.time : duration || line.time + 4
+      map.set(line.index, Math.max(0.4, end - line.time))
+    })
+    return map
+  }, [duration, timedLines])
 
   const sectionRanges = useMemo(
     () => buildSectionRanges(lyrics.lines, duration),
@@ -385,14 +371,21 @@ function App() {
     setActiveLine((previous) => (previous === next ? previous : next))
   }, [timedLines])
 
-  // Enquanto toca, a linha ativa vem de rAF: `timeupdate` dispara ~4x/s e
-  // atrasaria a virada de forma visível numa letra rápida.
+  // A linha ativa vem de um rAF próprio: `timeupdate` dispara ~4x/s e atrasaria
+  // a virada de forma visível. 40ms é imperceptível e custa um sexto do laço.
   useEffect(() => {
     if (!isPlaying) return undefined
-    let frame = requestAnimationFrame(function tick() {
-      resolveActiveLine()
+    let frame = 0
+    let previous = 0
+
+    const tick = (now) => {
       frame = requestAnimationFrame(tick)
-    })
+      if (now - previous < 40) return
+      previous = now
+      resolveActiveLine()
+    }
+
+    frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
   }, [isPlaying, resolveActiveLine])
 
@@ -556,21 +549,25 @@ function App() {
   }, [showLyrics, showMeaning, stampLine, syncMode, togglePlayback])
 
   /**
-   * `--intensity` (0..1) alimenta os efeitos que respiram junto com a música.
-   * Escreve direto no CSS, sem estado do React: a 60fps isso seria um render
-   * por quadro. Sem analisador (iOS), fica num valor fixo enquanto toca.
+   * `--intensity` (0..1) alimenta os efeitos que respiram junto com a música e
+   * a agitação das moscas. Escreve direto no CSS e no motor de canvas, sem
+   * estado do React: a 60fps isso seria um render por quadro. O laço roda a
+   * ~30Hz — o grão e o enxame não ganham nada acima disso.
    */
   useEffect(() => {
-    const root = rootRef.current
-    if (!root) return undefined
+    const field = flyFieldRef.current
 
     if (!isPlaying) {
-      root.style.setProperty('--intensity', '0')
+      writeIntensity(0)
+      field?.setAgitation(0)
       return undefined
     }
 
     if (!analyser) {
-      root.style.setProperty('--intensity', '0.5')
+      // Sem analisador (iOS), um valor fixo mantém a página viva sem mentir
+      // sobre o que a música está fazendo.
+      writeIntensity(0.5)
+      field?.setAgitation(0.45)
       return undefined
     }
 
@@ -579,28 +576,40 @@ function App() {
     const upper = Math.max(1, Math.floor(data.length * 0.55))
     let smooth = 0
     let peak = 0.08
-    let frame
+    let previous = 0
+    let frame = 0
 
-    const tick = () => {
+    const tick = (now) => {
+      frame = requestAnimationFrame(tick)
+      if (now - previous < 32) return
+      previous = now
+
       analyser.getByteFrequencyData(data)
       let sum = 0
       for (let index = 0; index < upper; index += 1) sum += data[index]
       const level = sum / upper / 255
 
       // Pico com decaimento lento: normaliza faixas mais baixas ou mais altas.
-      peak = Math.max(level, peak * 0.9995, 0.08)
+      peak = Math.max(level, peak * 0.999, 0.08)
       const normalized = Math.min(1, level / peak)
-      smooth += (normalized - smooth) * 0.11
-      root.style.setProperty('--intensity', smooth.toFixed(3))
-      frame = requestAnimationFrame(tick)
+      smooth += (normalized - smooth) * 0.16
+      writeIntensity(smooth)
+      flyFieldRef.current?.setAgitation(smooth)
     }
 
     frame = requestAnimationFrame(tick)
     return () => {
       cancelAnimationFrame(frame)
-      root.style.setProperty('--intensity', '0')
+      writeIntensity(0)
+      flyFieldRef.current?.setAgitation(0)
     }
-  }, [analyser, isPlaying])
+  }, [analyser, isPlaying, writeIntensity])
+
+  // A podridão acompanha o avanço da faixa: mais moscas, mais grão, mais ruído.
+  useEffect(() => {
+    writeDecay(decay)
+    flyFieldRef.current?.setDecay(decay)
+  }, [decay, writeDecay])
 
   useScrollLock(showMeaning, meaningCloseRef, closeMeaning)
   useScrollLock(showLyrics, lyricsCloseRef, closeLyrics)
@@ -663,7 +672,7 @@ function App() {
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return
     if (typeof window.MediaMetadata !== 'function') return
-    const isOriginal = trackSource === 'ARQUIVO LOCAL'
+    const isOriginal = trackSource === 'FITA LOCAL'
     navigator.mediaSession.metadata = new window.MediaMetadata({
       title: isOriginal ? 'Change (In The House Of Flies)' : trackSource,
       artist: isOriginal ? 'Deftones' : 'Change Experience',
@@ -703,12 +712,24 @@ function App() {
     [],
   )
 
+  useEffect(() => {
+    const audio = audioRef.current
+    if (audio) audio.volume = volume
+  }, [volume])
+
+  // Paralaxe do ponteiro: só no mouse, e coalescida num rAF. No celular não
+  // existe ponteiro pairando, e o handler seria puro custo por toque.
   const handlePointerMove = (event) => {
-    if (!rootRef.current) return
+    if (IS_TOUCH || pointerFrameRef.current) return
     const x = event.clientX / window.innerWidth - 0.5
     const y = event.clientY / window.innerHeight - 0.5
-    rootRef.current.style.setProperty('--pointer-x', x.toFixed(3))
-    rootRef.current.style.setProperty('--pointer-y', y.toFixed(3))
+    pointerFrameRef.current = requestAnimationFrame(() => {
+      pointerFrameRef.current = 0
+      const root = rootRef.current
+      if (!root) return
+      root.style.setProperty('--pointer-x', x.toFixed(3))
+      root.style.setProperty('--pointer-y', y.toFixed(3))
+    })
   }
 
   const handleDrop = (event) => {
@@ -739,14 +760,23 @@ function App() {
   }
 
   const changeVolume = (event) => {
-    const nextVolume = Number(event.target.value)
-    setVolume(nextVolume)
+    setVolume(Number(event.target.value))
     setMuted(false)
   }
 
+  const rootClass = [
+    'experience',
+    isPlaying ? 'is-playing' : '',
+    isChorus ? 'is-chorus' : '',
+    rotting ? 'is-rotting' : '',
+    infested ? 'is-infested' : '',
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <div
-      className={`experience ${isPlaying ? 'is-playing' : ''} ${isChorus ? 'is-chorus' : ''}`}
+      className={rootClass}
       data-section={activeSection || 'none'}
       ref={rootRef}
       onPointerMove={handlePointerMove}
@@ -762,7 +792,7 @@ function App() {
         muted={muted}
         onLoadedMetadata={(event) => {
           setDuration(event.currentTarget.duration)
-          setMessage('MP3 ENCONTRADO — APERTE PLAY')
+          setMessage('FITA PRONTA')
         }}
         onTimeUpdate={(event) => {
           const media = event.currentTarget
@@ -773,28 +803,18 @@ function App() {
         onPause={() => setIsPlaying(false)}
         onEnded={() => {
           setIsPlaying(false)
-          setMessage('FIM DA FAIXA — DE NOVO?')
+          setMessage('FIM DO LADO A')
         }}
-        onError={() => setMessage('ADICIONE O MP3 OU ESCOLHA UM ARQUIVO')}
+        onError={() => setMessage('SEM FITA — ESCOLHA UM MP3')}
       />
 
       <div className="background" aria-hidden="true" />
       <div className="ink-layer" aria-hidden="true" />
-      <div className="flies" aria-hidden="true">
-        {FLIES.map((fly, index) => (
-          <i
-            key={index}
-            style={{
-              top: fly.top,
-              left: fly.left,
-              '--delay': fly.delay,
-              '--duration': fly.duration,
-              '--scale': fly.scale,
-            }}
-          />
-        ))}
-      </div>
+      <FlyField controlRef={flyFieldRef} />
       <div className="chorus-flash" aria-hidden="true" />
+      <div className="infest-veil" aria-hidden="true" />
+      <div className="scanlines" aria-hidden="true" />
+      <div className="tracking" aria-hidden="true" />
       <div className="grain" aria-hidden="true" />
 
       {dragging && (
@@ -808,8 +828,8 @@ function App() {
             <X size={22} />
           </button>
           <Bug size={72} strokeWidth={1.1} />
-          <strong>SOLTE O MP3 AQUI</strong>
-          <span>Ele toca somente no seu navegador.</span>
+          <strong>SOLTE A FITA</strong>
+          <span>Ela toca somente no seu navegador.</span>
         </div>
       )}
 
@@ -829,7 +849,7 @@ function App() {
           >
             <header className="meaning-header">
               <div>
-                <span>TRACK NOTES / 01</span>
+                <span>NOTAS DA FAIXA / 01</span>
                 <h2 id="meaning-title">O QUE “CHANGE”<br />QUER DIZER?</h2>
               </div>
               <button
@@ -844,109 +864,20 @@ function App() {
 
             <div className="meaning-scroll">
               <p className="meaning-lead">
-                Em “Change (In The House Of Flies)” a transformação abordada vai além do aspecto
-                físico e mergulha em questões profundas de identidade e percepção. Bora por partes
-                (sem traduzir linha por linha pra não reproduzir a letra toda, mas cobrindo tudo que
-                ela quer dizer):
+                <Prose text={MEANING_LEAD} />
               </p>
 
-              <section>
-                <span>01</span>
-                <div>
-                  <h3>A METÁFORA NO CENTRO</h3>
-                  <p>
-                    Chino Moreno, vocalista da banda, já afirmou que a letra é altamente metafórica.
-                    A mudança descrita não é a do corpo: ela representa uma alteração intensa na
-                    forma como alguém se vê e é visto — percepção e identidade mexidas de lugar.
-                  </p>
-                </div>
-              </section>
-
-              <section>
-                <span>02</span>
-                <div>
-                  <h3>“I WATCHED YOU CHANGE / INTO A FLY”</h3>
-                  <p>
-                    A imagem da mosca funciona como símbolo de degradação ou perda de valor. Mas
-                    também pode indicar um renascimento desconfortável: a mosca está ligada à
-                    decadência e à efemeridade da vida. Nascer de novo, sim — só que como outra
-                    coisa, e não necessariamente melhor.
-                  </p>
-                </div>
-              </section>
-
-              <section>
-                <span>03</span>
-                <div>
-                  <h3>“PULLING OFF YOUR WINGS”</h3>
-                  <p>
-                    Arrancar as asas e rir em seguida reforça a ideia de controle ou crueldade diante
-                    da vulnerabilidade do outro. Sugere uma relação marcada por manipulação ou
-                    dominação: alguém observa a queda e se diverte com ela.
-                  </p>
-                </div>
-              </section>
-
-              <section>
-                <span>04</span>
-                <div>
-                  <h3>O CLIMA E O CLIPE</h3>
-                  <p>
-                    O tom sombrio da música é intensificado pelo videoclipe — máscaras de animais,
-                    expressões apáticas — e isso aprofunda o sentimento de alienação e desconexão.
-                    Todos estão juntos na mesma festa e ninguém está de fato ali.
-                  </p>
-                </div>
-              </section>
-
-              <section>
-                <span>05</span>
-                <div>
-                  <h3>“IT’S LIKE YOU NEVER HAD WINGS”</h3>
-                  <p>
-                    A repetição de que é como se nunca houvesse asas e de que agora ela se sente tão
-                    viva mostra o paradoxo: a mudança, mesmo dolorosa ou degradante, pode trazer uma
-                    sensação de vitalidade ou liberdade — ainda que ilusória.
-                  </p>
-                </div>
-              </section>
-
-              <section>
-                <span>06</span>
-                <div>
-                  <h3>A CRUZ E A ARMA</h3>
-                  <p>
-                    O trecho em que ele olha para a cruz, desvia o olhar, entrega a arma e pede pra
-                    ser destruído adiciona ambiguidade. Pode ser lido como culpa, como sacrifício ou
-                    como desejo de fuga — e a música não resolve qual dos três.
-                  </p>
-                </div>
-              </section>
-
-              <section>
-                <span>07</span>
-                <div>
-                  <h3>IDENTIDADE SOB PRESSÃO</h3>
-                  <p>
-                    O que atravessa tudo é a fragilidade da identidade: ela pode se perder diante de
-                    pressões emocionais e existenciais. Quem muda não escolhe totalmente em que vai
-                    virar, e quem assiste tem parte nisso.
-                  </p>
-                </div>
-              </section>
-
-              <section className="meaning-summary">
-                <span>08</span>
-                <div>
-                  <h3>RESUMO DO SIGNIFICADO GERAL</h3>
-                  <p>
-                    A música explora as complexidades das relações humanas, mostrando que a
-                    transformação pode significar tanto libertação quanto destruição. É lenta,
-                    contida e sem catarse fácil: em vez de gritar a dor, ela observa de perto — o que
-                    é exatamente a pegada do Deftones em White Pony.
-                  </p>
-                </div>
-              </section>
+              {MEANING.map((entry) => (
+                <section key={entry.n} className={entry.summary ? 'meaning-summary' : undefined}>
+                  <span>{entry.n}</span>
+                  <div>
+                    <h3>{entry.title}</h3>
+                    <p>
+                      <Prose text={entry.body} />
+                    </p>
+                  </div>
+                </section>
+              ))}
             </div>
           </article>
         </div>,
@@ -1023,7 +954,11 @@ function App() {
                           </li>
                         )}
                         <li className={classes} ref={isActive ? activeLineRef : null}>
-                          <button type="button" onClick={() => seekToLine(line, index)}>
+                          <button
+                            type="button"
+                            onClick={() => seekToLine(line, index)}
+                            aria-label={line.text}
+                          >
                             {syncMode && (
                               <em className="lyric-stamp">
                                 {Number.isFinite(line.time)
@@ -1031,7 +966,11 @@ function App() {
                                   : '--:--.--'}
                               </em>
                             )}
-                            <span>{line.text}</span>
+                            <TypedLine
+                              text={line.text}
+                              typing={isActive && isPlaying && !syncMode}
+                              budget={budgets.get(index)}
+                            />
                           </button>
                         </li>
                       </Fragment>
@@ -1134,18 +1073,18 @@ function App() {
       <header className="topbar">
         <a className="monogram" href="#top" aria-label="Voltar ao início">
           <span>DT</span>
-          <small>00</small>
+          <small>10</small>
         </a>
 
         <div className="top-meta">
-          <span>TRACK 10</span>
-          <i />
           <span>WHITE PONY</span>
+          <i />
+          <span>92 BPM</span>
         </div>
 
         <nav>
           <a href="#player">PLAYER</a>
-          <a href="#energy">ENERGIA</a>
+          <a href="#casa">A CASA</a>
         </nav>
       </header>
 
@@ -1154,19 +1093,46 @@ function App() {
           <div className="side-index" aria-hidden="true">
             <span>SACRAMENTO CA</span>
             <span>38.5816° N</span>
-            <span>92 BPM</span>
+            <span>FAIXA 10</span>
           </div>
 
           <div className="hero-copy">
             <p className="eyebrow"><span /> Deftones / single experience</p>
-            <h1 id="track-title" aria-label="Change">
-              {'CHANGE'.split('').map((letter, index) => (
-                <span key={letter + index} style={{ '--index': index }}>{letter}</span>
-              ))}
-            </h1>
+
+            <div className="title-wrap">
+              <h1 id="track-title" aria-label="Change">
+                <button
+                  type="button"
+                  className="title-trigger"
+                  onPointerDown={startSwarm}
+                  onPointerUp={endSwarm}
+                  onPointerLeave={endSwarm}
+                  onPointerCancel={endSwarm}
+                  onClick={(event) => {
+                    // `detail === 0` = ativado pelo teclado, onde não houve
+                    // pointerdown nenhum. No mouse isso já rodou e é ignorado.
+                    if (event.detail === 0) {
+                      const box = event.currentTarget.getBoundingClientRect()
+                      swarm(box.left + box.width / 2, box.top + box.height / 2)
+                    }
+                  }}
+                  aria-label="Change — segure para soltar as moscas"
+                >
+                  {'CHANGE'.split('').map((letter, index) => (
+                    // data-letter alimenta o escorrido em ::after — é o mesmo
+                    // caractere, então o derretido nunca sai do lugar.
+                    <span key={letter + index} data-letter={letter} style={{ '--index': index }}>
+                      {letter}
+                    </span>
+                  ))}
+                </button>
+              </h1>
+            </div>
+
             <p className="hero-sub">(IN THE HOUSE OF FLIES)</p>
+
             <div className="hero-foot">
-              <p>ONE TRACK.<br />SLOW COLLAPSE.</p>
+              <p>UMA FAIXA.<br />COLAPSO LENTO.</p>
               <div className="release-stamp">
                 <span>RELEASED</span>
                 <strong>2000</strong>
@@ -1177,7 +1143,7 @@ function App() {
                 aria-expanded={showMeaning}
               >
                 <BookOpen size={17} />
-                MOSTRAR SIGNIFICADO
+                SIGNIFICADO
               </button>
               <button
                 className="meaning-trigger lyrics-trigger"
@@ -1189,89 +1155,125 @@ function App() {
               </button>
             </div>
           </div>
-
-          <div className="roundel" aria-hidden="true">
-            <span>WATCH IT CHANGE • WATCH IT CHANGE • </span>
-            <Headphones size={34} />
-          </div>
         </section>
 
         <section className="player-section" id="player" aria-label="Player de áudio">
-          <div className="player-card">
-            <div className="player-heading">
-              <div className={`record ${isPlaying ? 'spinning' : ''}`}>
-                <Disc3 size={42} />
+          <div className="deck">
+            <i className="screw screw-tl" aria-hidden="true" />
+            <i className="screw screw-tr" aria-hidden="true" />
+            <i className="screw screw-bl" aria-hidden="true" />
+            <i className="screw screw-br" aria-hidden="true" />
+
+            <div className="deck-head">
+              <div className="deck-brand">
+                <strong>PONY&nbsp;·&nbsp;90</strong>
+                <span>PORTABLE TAPE UNIT</span>
               </div>
-              <div>
-                <span className="now-playing">
-                  {message}
-                  {activeSection && isPlaying && (
-                    <em className={`section-chip is-${activeSection}`}>
-                      {SECTION_LABELS[activeSection] || activeSection}
-                    </em>
-                  )}
-                </span>
-                <h2>CHANGE</h2>
-                <p>DEFTONES <i /> {trackSource}</p>
+              <div className="deck-side" aria-hidden="true">
+                LADO<em>A</em>
               </div>
-              <div className="track-number">10</div>
             </div>
 
-            <Spectrum
+            <div className="cassette" aria-hidden="true">
+              <div className="cassette-window">
+                <div
+                  className={`reel ${isPlaying ? 'turning' : ''}`}
+                  style={{ '--fill': (1 - decay).toFixed(3) }}
+                >
+                  <i />
+                </div>
+                <div className="tape-path" />
+                <div
+                  className={`reel ${isPlaying ? 'turning' : ''}`}
+                  style={{ '--fill': decay.toFixed(3) }}
+                >
+                  <i />
+                </div>
+              </div>
+              <div className="cassette-label">
+                <strong>CHANGE</strong>
+                <span>DEFTONES — WHITE PONY</span>
+              </div>
+            </div>
+
+            <SwarmMeter
               analyser={analyser}
               isPlaying={isPlaying}
               audioRef={audioRef}
-              isChorus={isChorus}
+              hot={isChorus}
             />
 
-            <div className="timeline">
-              <span>{formatTime(currentTime)}</span>
-              <div className="timeline-track">
-                {duration > 0 &&
-                  choruses.map((range) => (
-                    <i
-                      key={range.start}
-                      className="timeline-chorus"
-                      aria-hidden="true"
-                      style={{
-                        left: `${(range.start / duration) * 100}%`,
-                        width: `${Math.max(0.8, ((range.end - range.start) / duration) * 100)}%`,
-                      }}
-                    />
-                  ))}
-                <input
-                  type="range"
-                  min="0"
-                  max={duration || 1}
-                  step="0.1"
-                  value={Math.min(currentTime, duration || 1)}
-                  onChange={seek}
-                  aria-label="Posição da música"
-                  style={{ '--range-progress': `${progress}%` }}
-                />
-              </div>
-              <span>{duration ? formatTime(duration) : DEFAULT_DURATION}</span>
+            <div className="deck-lcd">
+              <span className="lcd">
+                <i aria-hidden="true">88:88</i>
+                <b>{formatTime(currentTime)}</b>
+              </span>
+              <span className="lcd-status">
+                {message}
+                {activeSection && isPlaying && (
+                  <em className={`section-chip is-${activeSection}`}>
+                    {SECTION_LABELS[activeSection] || activeSection}
+                  </em>
+                )}
+              </span>
+              <span className="lcd lcd-total">
+                <i aria-hidden="true">88:88</i>
+                <b>{duration ? formatTime(duration) : DEFAULT_DURATION}</b>
+              </span>
             </div>
 
-            <div className="player-controls">
+            <div className="deck-track">
+              {duration > 0 &&
+                choruses.map((range) => (
+                  <i
+                    key={range.start}
+                    className="timeline-chorus"
+                    aria-hidden="true"
+                    style={{
+                      left: `${(range.start / duration) * 100}%`,
+                      width: `${Math.max(0.8, ((range.end - range.start) / duration) * 100)}%`,
+                    }}
+                  />
+                ))}
+              <input
+                type="range"
+                min="0"
+                max={duration || 1}
+                step="0.1"
+                value={Math.min(currentTime, duration || 1)}
+                onChange={seek}
+                aria-label="Posição da música"
+                style={{ '--range-progress': `${progress}%` }}
+              />
+            </div>
+
+            <div className="deck-transport">
               <button
-                className="icon-button"
+                className="deck-key"
                 onClick={() => {
                   audioRef.current.currentTime = 0
                   setCurrentTime(0)
                 }}
                 aria-label="Voltar ao início"
               >
-                <RotateCcw size={20} />
+                <SkipBack size={19} />
               </button>
 
-              <button className="play-button" onClick={togglePlayback} aria-label={isPlaying ? 'Pausar' : 'Tocar'}>
-                {isPlaying ? <Pause fill="currentColor" /> : <Play fill="currentColor" />}
+              <button
+                className="deck-key deck-play"
+                onClick={togglePlayback}
+                aria-label={isPlaying ? 'Pausar' : 'Tocar'}
+              >
+                {isPlaying ? <Pause fill="currentColor" size={22} /> : <Play fill="currentColor" size={22} />}
               </button>
 
               <div className="volume-control">
-                <button className="icon-button" onClick={() => setMuted((value) => !value)} aria-label={muted ? 'Ativar som' : 'Silenciar'}>
-                  {muted || volume === 0 ? <VolumeX size={20} /> : <Volume2 size={20} />}
+                <button
+                  className="deck-key"
+                  onClick={() => setMuted((value) => !value)}
+                  aria-label={muted ? 'Ativar som' : 'Silenciar'}
+                >
+                  {muted || volume === 0 ? <VolumeX size={19} /> : <Volume2 size={19} />}
                 </button>
                 <input
                   type="range"
@@ -1286,7 +1288,7 @@ function App() {
               </div>
 
               <button className="load-button" onClick={() => fileInputRef.current?.click()}>
-                <Upload size={17} /> ESCOLHER MP3
+                <Upload size={16} /> TROCAR FITA
               </button>
               <input
                 ref={fileInputRef}
@@ -1296,41 +1298,48 @@ function App() {
                 onChange={(event) => loadFile(event.target.files?.[0])}
               />
             </div>
+
+            <p className="deck-source">{trackSource}</p>
           </div>
 
           <div className="player-note">
-            <Maximize2 size={17} />
-            <p>ARRASTE O SEU MP3 PARA QUALQUER LUGAR DA TELA</p>
-            <span>SPACE = PLAY / PAUSE &nbsp; M = MUTE</span>
+            <Bug size={16} />
+            <p>ARRASTE UM MP3 PRA QUALQUER LUGAR DA TELA</p>
+            <span>SPACE = PLAY / PAUSE &nbsp;·&nbsp; M = MUTE</span>
           </div>
         </section>
 
-        <section className="energy-section" id="energy">
-          <div className="section-kicker">02 / ANATOMIA DA FAIXA</div>
-          <div className="energy-intro">
-            <h2>CALMA.<br /><em>MUDANÇA.</em><br />QUEDA.</h2>
+        <section className="house-section" id="casa">
+          <div className="section-kicker">02 / A CASA</div>
+
+          <div className="house-intro">
+            <h2>ELA NÃO<br /><em>DESABA.</em><br />ELA APODRECE.</h2>
             <p>
-              Uma experiência construída para acompanhar a dinâmica da música: observação, atrito
-              contido e desabamento. Coloque os fones, carregue o arquivo e deixe o espectro reagir
-              em tempo real.
+              A estrutura cede no ritmo da faixa: quanto mais a música avança, menos casa sobra e
+              mais coisa voa dentro dela. Role a página ou deixe a fita rodar — o resultado é o
+              mesmo.
             </p>
           </div>
 
-          <div className="energy-map">
-            {[
-              ['01', 'OBSERVAÇÃO', '0'],
-              ['02', 'METAMORFOSE', '24'],
-              ['03', 'ASAS ARRANCADAS', '49'],
-              ['04', 'VAZIO', '76'],
-            ].map(([number, label, start], index) => {
+          <House stage={Math.round(progress)} />
+
+          <div className="stage-map">
+            {STAGES.map(([number, label, note], index) => {
+              const start = [0, 24, 49, 76][index]
               const end = [24, 49, 76, 101][index]
-              const active = progress >= Number(start) && progress < end
+              const active = isPlaying && progress >= start && progress < end
               return (
-                <article className={active && isPlaying ? 'active' : ''} key={label}>
+                <article className={active ? 'active' : ''} key={label}>
                   <span>{number}</span>
                   <strong>{label}</strong>
-                  <div className="energy-lines" aria-hidden="true">
-                    {Array.from({ length: 12 }, (_, line) => <i key={line} style={{ '--line': line }} />)}
+                  <p>{note}</p>
+                  <div className="stage-lines" aria-hidden="true">
+                    {Array.from({ length: 10 }, (_, line) => (
+                      <i
+                        key={line}
+                        style={{ '--line': line, height: `${16 + (line % 5) * 15}%` }}
+                      />
+                    ))}
                   </div>
                 </article>
               )
@@ -1341,15 +1350,17 @@ function App() {
 
       <div className="ticker" aria-hidden="true">
         <div>
-          CHANGE / DEFTONES / 2000 / IN THE HOUSE OF FLIES / CHANGE / DEFTONES / 2000 / IN THE HOUSE OF FLIES /&nbsp;
-          CHANGE / DEFTONES / 2000 / IN THE HOUSE OF FLIES / CHANGE / DEFTONES / 2000 / IN THE HOUSE OF FLIES /
+          CHANGE · DEFTONES · 2000 · IN THE HOUSE OF FLIES ·&nbsp;
+          CHANGE · DEFTONES · 2000 · IN THE HOUSE OF FLIES ·&nbsp;
+          CHANGE · DEFTONES · 2000 · IN THE HOUSE OF FLIES ·&nbsp;
+          CHANGE · DEFTONES · 2000 · IN THE HOUSE OF FLIES ·&nbsp;
         </div>
       </div>
 
       <footer>
-        <div className="footer-mark">C<span>/</span>00</div>
-        <p>EXPERIÊNCIA NÃO OFICIAL CRIADA PARA FÃS.<br />ÁUDIO REPRODUZIDO LOCALMENTE NO SEU DISPOSITIVO.</p>
-        <a href="#top">BACK TO TOP ↑</a>
+        <div className="footer-mark">C<span>/</span>10</div>
+        <p>EXPERIÊNCIA NÃO OFICIAL FEITA POR FÃ.<br />O ÁUDIO TOCA LOCALMENTE, NO SEU APARELHO.</p>
+        <a href="#top">VOLTAR AO TOPO ↑</a>
       </footer>
     </div>
   )
