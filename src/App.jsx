@@ -5,11 +5,14 @@ import {
   Bug,
   Copy,
   Download,
+  FileDown,
   Mic2,
   Pause,
   Play,
+  Repeat,
   SkipBack,
   Trash2,
+  Undo2,
   Upload,
   Volume2,
   VolumeX,
@@ -22,11 +25,13 @@ import {
   blockRange,
   blockSignature,
   buildSectionRanges,
+  deriveFromTwin,
   findActiveIndex,
   listBlocks,
   formatTimestamp,
   parseLyrics,
   readStoredLyrics,
+  shiftLines,
   toLrc,
   writeStoredLyrics,
 } from './lyrics.js'
@@ -129,6 +134,7 @@ function App() {
   const objectUrlRef = useRef(null)
   const flyFieldRef = useRef(null)
   const swarmTimersRef = useRef({ hold: 0, calm: 0 })
+  const copyTimerRef = useRef(0)
   const pointerFrameRef = useRef(0)
 
   const [isPlaying, setIsPlaying] = useState(false)
@@ -147,6 +153,10 @@ function App() {
   const [syncMode, setSyncMode] = useState(false)
   const [lyricsSource, setLyricsSource] = useState(null)
   const [lyricsOrigin, setLyricsOrigin] = useState('loading')
+  // A letra que veio de public/lyrics/ — a que todo visitante recebe. Guardada
+  // à parte do que está em uso pra dar como voltar pra ela depois de sincronizar.
+  const [projectLyrics, setProjectLyrics] = useState(null)
+  const [copied, setCopied] = useState(false)
   const [draft, setDraft] = useState('')
   const [activeLine, setActiveLine] = useState(-1)
   const [syncCursor, setSyncCursor] = useState(0)
@@ -272,6 +282,7 @@ function App() {
     () => () => {
       window.clearInterval(swarmTimersRef.current.hold)
       window.clearTimeout(swarmTimersRef.current.calm)
+      window.clearTimeout(copyTimerRef.current)
     },
     [],
   )
@@ -312,19 +323,35 @@ function App() {
 
   const hasLyrics = lyrics.lines.length > 0
   const syncedCount = timedLines.length
+  // O cursor pode estar uma posição além do fim (tudo marcado); quase toda
+  // operação quer a última linha real.
+  const cursorIndex = Math.min(syncCursor, Math.max(0, lyrics.lines.length - 1))
   const activeSection = activeLine >= 0 ? lyrics.lines[activeLine]?.section ?? null : null
   const isChorus = isPlaying && activeSection === 'chorus'
+
+  // Saber de onde a letra veio importa: sincronizando, o que está na tela é o
+  // rascunho do navegador, não o que os visitantes recebem.
+  const originLabel = { storage: 'NAVEGADOR', file: 'PROJETO' }[lyricsOrigin]
 
   const lyricsStatus = (() => {
     if (lyricsOrigin === 'loading') return 'CARREGANDO…'
     if (!hasLyrics) return 'NENHUMA LETRA'
-    if (!syncedCount) return `${lyrics.lines.length} LINHAS / SEM SYNC`
-    if (syncedCount < lyrics.lines.length) return `SYNC ${syncedCount}/${lyrics.lines.length}`
-    return 'SINCRONIZADA'
+    const suffix = originLabel ? ` · ${originLabel}` : ''
+    if (!syncedCount) return `${lyrics.lines.length} LINHAS / SEM SYNC${suffix}`
+    if (syncedCount < lyrics.lines.length)
+      return `SYNC ${syncedCount}/${lyrics.lines.length}${suffix}`
+    return `SINCRONIZADA${suffix}`
   })()
 
-  // Fontes, em ordem: o que o usuário colou/sincronizou → arquivo em
-  // public/lyrics/ → nada. Nenhuma letra é distribuída com o projeto.
+  /**
+   * Duas fontes, e as duas importam:
+   *   - a do projeto (public/lyrics/), que é o que todo visitante recebe;
+   *   - a do navegador, que é o rascunho de quem está sincronizando.
+   *
+   * O rascunho tem precedência, mas o arquivo é buscado de qualquer jeito. Sem
+   * isso, quem sincronizou uma vez ficaria preso à própria cópia pra sempre e
+   * não teria como conferir o que os outros estão vendo.
+   */
   useEffect(() => {
     let cancelled = false
 
@@ -332,7 +359,6 @@ function App() {
     if (stored) {
       setLyricsSource(stored)
       setLyricsOrigin('storage')
-      return undefined
     }
 
     const loadFromDisk = async () => {
@@ -344,14 +370,17 @@ function App() {
           // Um 404 servido como index.html não é letra.
           if (!text.trim() || /^\s*<(!doctype|html)/i.test(text)) continue
           if (cancelled) return
-          setLyricsSource(text)
-          setLyricsOrigin('file')
+          setProjectLyrics(text)
+          if (!stored) {
+            setLyricsSource(text)
+            setLyricsOrigin('file')
+          }
           return
         } catch {
           /* arquivo ausente — tenta o próximo */
         }
       }
-      if (!cancelled) setLyricsOrigin('empty')
+      if (!cancelled && !stored) setLyricsOrigin('empty')
     }
 
     loadFromDisk()
@@ -439,6 +468,39 @@ function App() {
     [commitLyrics, lyrics, syncCursor],
   )
 
+  // Errar uma linha no meio da faixa não pode custar recomeçar: desmarca a
+  // última e devolve o cursor pra ela.
+  const undoStamp = useCallback(() => {
+    const index = syncCursor - 1
+    if (index < 0 || !lyrics.lines[index]) return
+    commitLyrics(
+      lyrics.lines.map((line, i) => (i === index ? { ...line, time: null } : line)),
+      lyrics.meta,
+    )
+    setSyncCursor(index)
+  }, [commitLyrics, lyrics, syncCursor])
+
+  /** Desloca a letra inteira — pra quando ela está toda atrasada igual. */
+  const shiftAll = useCallback(
+    (delta) => {
+      commitLyrics(shiftLines(lyrics.lines, delta), lyrics.meta)
+    },
+    [commitLyrics, lyrics],
+  )
+
+  // O refrão volta três vezes e os "ah-ah" duas: marcada a primeira linha do
+  // bloco repetido, o resto sai dos intervalos do bloco gêmeo já sincronizado.
+  const derived = useMemo(
+    () => (lyrics.lines.length ? deriveFromTwin(lyrics.lines, cursorIndex) : null),
+    [cursorIndex, lyrics.lines],
+  )
+
+  const deriveTwin = useCallback(() => {
+    if (!derived) return
+    commitLyrics(derived, lyrics.meta)
+    setSyncCursor(blockRange(lyrics.lines, cursorIndex).end)
+  }, [commitLyrics, cursorIndex, derived, lyrics])
+
   // Marcar uma seção pinta o bloco inteiro (a estrofe entre linhas em branco),
   // e para ali. Sem essa fronteira, numa letra sem cabeçalho nenhum a marcação
   // vazaria pelo resto da música.
@@ -488,14 +550,42 @@ function App() {
     setSyncCursor(0)
   }, [draft])
 
+  /** Descarta o rascunho do navegador e volta pra letra do projeto, se houver. */
+  const useProjectLyrics = useCallback(() => {
+    if (!projectLyrics) return
+    writeStoredLyrics(null)
+    setLyricsSource(projectLyrics)
+    setLyricsOrigin('file')
+    setSyncCursor(0)
+  }, [projectLyrics])
+
   const clearLyrics = useCallback(() => {
     writeStoredLyrics(null)
-    setLyricsSource(null)
-    setLyricsOrigin('empty')
     setDraft('')
     setSyncCursor(0)
     setSyncMode(false)
-  }, [])
+    // Limpar significa "esquece o meu rascunho", e não "fique sem letra": se o
+    // projeto traz um arquivo, é pra ele que a tela volta.
+    if (projectLyrics) {
+      setLyricsSource(projectLyrics)
+      setLyricsOrigin('file')
+      return
+    }
+    setLyricsSource(null)
+    setLyricsOrigin('empty')
+  }, [projectLyrics])
+
+  // Atalho pra levar o resultado daqui pro repositório sem passar por Downloads.
+  const copyLrc = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(toLrc(lyrics))
+      setCopied(true)
+      window.clearTimeout(copyTimerRef.current)
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      /* área de transferência bloqueada — o botão BAIXAR continua valendo */
+    }
+  }, [lyrics])
 
   const exportLrc = useCallback(() => {
     const blob = new Blob([toLrc(lyrics)], { type: 'text/plain;charset=utf-8' })
@@ -1017,10 +1107,35 @@ function App() {
                       ? 'TUDO MARCADO'
                       : `MARCAR LINHA ${syncCursor + 1}`}
                   </button>
-                  <div className="sync-nudge">
-                    <button onClick={() => nudgeLine(-0.25)}>−0,25s</button>
-                    <button onClick={() => nudgeLine(0.25)}>+0,25s</button>
-                  </div>
+                  <button
+                    className="sync-undo"
+                    onClick={undoStamp}
+                    disabled={syncCursor <= 0}
+                    title="Desmarca a última linha e volta o cursor pra ela"
+                  >
+                    <Undo2 size={15} /> DESFAZER
+                  </button>
+                </div>
+
+                <button
+                  className={`sync-derive ${derived ? 'ready' : ''}`}
+                  onClick={deriveTwin}
+                  disabled={!derived}
+                  title="Preenche o bloco inteiro a partir do bloco de texto idêntico já sincronizado"
+                >
+                  <Repeat size={15} />
+                  {derived
+                    ? 'DERIVAR BLOCO DO GÊMEO'
+                    : 'MARQUE A 1ª LINHA DE UM BLOCO REPETIDO'}
+                </button>
+
+                <div className="sync-row sync-fix">
+                  <span>ÚLTIMA</span>
+                  <button onClick={() => nudgeLine(-0.25)}>−0,25s</button>
+                  <button onClick={() => nudgeLine(0.25)}>+0,25s</button>
+                  <span className="sync-gap">TUDO</span>
+                  <button onClick={() => shiftAll(-0.5)}>−0,5s</button>
+                  <button onClick={() => shiftAll(0.5)}>+0,5s</button>
                 </div>
 
                 <div className="sync-row sync-sections">
@@ -1028,23 +1143,16 @@ function App() {
                   {SECTION_ORDER.map((section) => (
                     <button
                       key={section}
-                      className={
-                        lyrics.lines[Math.min(syncCursor, lyrics.lines.length - 1)]?.section ===
-                        section
-                          ? 'on'
-                          : ''
-                      }
-                      onClick={() =>
-                        tagSection(Math.min(syncCursor, lyrics.lines.length - 1), section)
-                      }
+                      className={lyrics.lines[cursorIndex]?.section === section ? 'on' : ''}
+                      onClick={() => tagSection(cursorIndex, section)}
                     >
                       {SECTION_LABELS[section]}
                     </button>
                   ))}
                   <button
                     className="sync-twins"
-                    onClick={() => tagTwinBlocks(Math.min(syncCursor, lyrics.lines.length - 1))}
-                    disabled={!lyrics.lines[Math.min(syncCursor, lyrics.lines.length - 1)]?.section}
+                    onClick={() => tagTwinBlocks(cursorIndex)}
+                    disabled={!lyrics.lines[cursorIndex]?.section}
                     title="Aplica a mesma seção a todos os blocos de texto idêntico"
                   >
                     <Copy size={13} /> IGUAIS
@@ -1056,9 +1164,17 @@ function App() {
                     {syncedCount}/{lyrics.lines.length} MARCADAS
                   </span>
                   <button onClick={() => setSyncCursor(0)}>VOLTAR AO TOPO</button>
+                  <button onClick={copyLrc}>
+                    <Copy size={14} /> {copied ? 'COPIADO' : 'COPIAR .LRC'}
+                  </button>
                   <button onClick={exportLrc}>
                     <Download size={14} /> BAIXAR .LRC
                   </button>
+                  {projectLyrics && lyricsOrigin === 'storage' && (
+                    <button onClick={useProjectLyrics} title="Descarta o rascunho deste navegador">
+                      <FileDown size={14} /> USAR A DO PROJETO
+                    </button>
+                  )}
                   <button className="sync-danger" onClick={clearLyrics}>
                     <Trash2 size={14} /> LIMPAR
                   </button>

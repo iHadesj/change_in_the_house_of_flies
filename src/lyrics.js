@@ -143,6 +143,57 @@ export function blockSignature(lines, start, end) {
     .join('\n')
 }
 
+/**
+ * Preenche um bloco inteiro a partir de outro de texto idêntico já sincronizado.
+ *
+ * Numa letra assim, o refrão volta três vezes e os "ah-ah" duas: marcar tudo na
+ * mão é marcar a mesma coisa quatro vezes e errar em pelo menos uma. Aqui basta
+ * marcar a PRIMEIRA linha do bloco repetido — o resto vem dos intervalos
+ * internos da ocorrência já sincronizada, ancorados nessa marca.
+ *
+ * Devolve o novo array de linhas, ou `null` quando não dá pra derivar (não há
+ * bloco gêmeo pronto, ou a âncora ainda não foi marcada).
+ */
+export function deriveFromTwin(lines, index) {
+  const target = blockRange(lines, index)
+  const anchor = lines[target.start]
+  if (!anchor || !Number.isFinite(anchor.time)) return null
+
+  const length = target.end - target.start
+  const signature = blockSignature(lines, target.start, target.end)
+
+  const reference = listBlocks(lines).find((block) => {
+    if (block.start === target.start) return false
+    if (block.end - block.start !== length) return false
+    if (blockSignature(lines, block.start, block.end) !== signature) return false
+    for (let i = block.start; i < block.end; i += 1) {
+      if (!Number.isFinite(lines[i].time)) return false
+    }
+    return true
+  })
+
+  if (!reference) return null
+
+  const origin = lines[reference.start].time
+  return lines.map((line, i) => {
+    if (i < target.start || i >= target.end) return line
+    const source = lines[reference.start + (i - target.start)]
+    return {
+      ...line,
+      time: Math.max(0, anchor.time + (source.time - origin)),
+      // A marcação de seção viaja junto: derivar um refrão já o marca como tal.
+      section: source.section ?? line.section,
+    }
+  })
+}
+
+/** Desloca toda a letra de uma vez, pra quando ela está uniformemente atrasada. */
+export function shiftLines(lines, delta) {
+  return lines.map((line) =>
+    Number.isFinite(line.time) ? { ...line, time: Math.max(0, line.time + delta) } : line,
+  )
+}
+
 // Letra sincronizada: [mm:ss.xx] por linha, com {refrão} opcional marcando a
 // seção. A marcação vale dali em diante até a próxima.
 function parseLrc(source) {

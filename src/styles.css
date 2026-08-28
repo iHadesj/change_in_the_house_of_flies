@@ -1793,10 +1793,43 @@ footer a {
 }
 
 .sync-stamp:disabled { background: rgba(139, 157, 63, 0.3) !important; }
-.sync-nudge { display: flex; gap: 6px; }
 .sync-sections { gap: 6px; }
 .sync-twins { margin-left: auto; }
 .sync-io { justify-content: space-between; }
+
+.sync-bar .sync-undo { flex: 0 0 auto; }
+
+/* Separa o ajuste da última linha do deslocamento da letra inteira. */
+.sync-fix .sync-gap { margin-left: 12px; }
+
+/* O atalho que corta o trabalho pela metade: enquanto não há um bloco gêmeo
+   pronto, o botão fica apagado e explica o que fazer pra ligar. */
+.sync-bar .sync-derive {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--ash-dim);
+  border: 1px dashed var(--hair);
+  background: transparent;
+  cursor: pointer;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+}
+
+.sync-bar .sync-derive.ready {
+  color: var(--void);
+  border-style: solid;
+  border-color: var(--rot-hot);
+  background: var(--rot-hot);
+}
+
+/* O texto desabilitado é instrução, não decoração: precisa continuar legível. */
+.sync-bar .sync-derive:disabled { opacity: 0.75; cursor: default; }
 
 /* ====================================================== REFRÃO / PODRIDÃO == */
 
@@ -2007,6 +2040,8 @@ footer a {
 
   .sync-bar button:hover:not(:disabled) { color: var(--void); background: var(--bone); }
   .sync-bar .sync-danger:hover { color: var(--void); background: #cf8894; }
+  /* O botão de derivar já é verde quando está pronto — hover não pode apagá-lo. */
+  .sync-bar .sync-derive.ready:hover { background: var(--rot); }
 }
 
 /* ==================================================== MOVIMENTO REDUZIDO === */

@@ -1,17 +1,32 @@
 LETRA
 =====
 
-O projeto nao distribui letra nenhuma: e material protegido. Voce coloca a sua
-aqui, ou cola direto no app (botao LETRA), e nesse caso ela fica salva so no
-seu navegador.
+O projeto nao vem com letra: voce coloca a sua aqui, ou cola direto no app
+(botao LETRA).
 
 Duas formas de carregar por arquivo:
 
 1) change.txt  -- letra crua, uma linha por linha
 2) change.lrc  -- letra ja sincronizada
 
-O app procura nesta ordem: o que voce colou no navegador, depois change.lrc,
-depois change.txt. Os dois arquivos estao no .gitignore.
+O app procura nesta ordem: o rascunho salvo no navegador, depois change.lrc,
+depois change.txt.
+
+
+QUEM VE O QUE
+-------------
+
+Isto e o ponto que mais confunde:
+
+  change.lrc / change.txt nesta pasta  ->  TODO VISITANTE recebe
+  rascunho salvo no navegador          ->  SO VOCE, nesse aparelho
+
+O rascunho tem precedencia. Ou seja: depois de sincronizar, a tela mostra o SEU
+rascunho, nao o que os outros estao vendo. Pra conferir o que o publico recebe,
+use USAR A DO PROJETO (ou LIMPAR, que descarta o rascunho e volta pro arquivo).
+
+Pra a letra sincronizada valer pra todo mundo, o arquivo tem que estar nesta
+pasta como change.lrc e ser versionado junto com o resto do projeto.
 
 
 FORMATO DO .txt
@@ -37,6 +52,10 @@ de intensidade quando o refrao entra:
 Cabecalhos aceitos: intro, verso, pre, refrao (ou chorus/hook), ponte,
 break, outro, instrumental.
 
+Se voce colou a letra de um site, confira o fim do arquivo: costuma vir
+rodape junto ("Adicionar aos favoritos", "Cifra", "Composicao: ..."). O app
+nao tem como saber que aquilo nao e letra, e mostra como se fosse.
+
 
 FORMATO DO .lrc
 ---------------
@@ -50,17 +69,42 @@ Padrao LRC: [mm:ss.cc] no comeco de cada linha. Para marcar a secao, use
 SINCRONIZANDO
 -------------
 
-Nao da pra adivinhar os tempos da faixa, entao o app traz um sincronizador:
+Nao da pra adivinhar os tempos da faixa, entao o app traz um sincronizador.
 
 1. Carregue a letra (arquivo ou colando).
 2. Abra LETRA e ligue o botao SYNC.
 3. De play e aperte MARCAR (ou Enter) no instante em que cada linha comeca.
-4. Errou por pouco? -0,25s / +0,25s ajustam a ultima marcada.
+4. Errou por pouco?  -0,25s / +0,25s ajustam a ULTIMA marcada.
+   Errou a linha inteira?  DESFAZER desmarca e devolve o cursor pra ela.
+   Ta tudo atrasado igual?  TUDO -0,5s / +0,5s desloca a letra inteira.
 5. Toque numa linha pra mover o cursor pra ela.
-6. Marque as secoes: escolha REFRAO com o cursor dentro do refrao e o bloco
-   inteiro e pintado. Se o refrao se repete igual varias vezes, o botao
-   IGUAIS aplica a mesma secao a todos os blocos de texto identico de uma vez.
-7. BAIXAR .LRC salva o resultado. Ponha o arquivo nesta pasta como change.lrc
-   pra valer em qualquer navegador -- sem isso, fica so no seu.
+
+O atalho que economiza a maior parte do trabalho:
+
+6. Refrao que volta identico varias vezes NAO precisa ser marcado de novo.
+   Marque so a PRIMEIRA linha do refrao repetido e aperte DERIVAR BLOCO DO
+   GEMEO: as outras linhas do bloco saem dos intervalos internos da ocorrencia
+   que voce ja sincronizou, ancoradas na sua marca. A marcacao de secao vem
+   junto. O botao acende sozinho quando existe um bloco gemeo pronto.
+
+7. Marque as secoes: escolha REFRAO com o cursor dentro do refrao e o bloco
+   inteiro e pintado. IGUAIS aplica a mesma secao a todos os blocos de texto
+   identico de uma vez.
+
+Levando o resultado pro projeto:
+
+8. COPIAR .LRC joga o texto na area de transferencia -- da pra colar direto
+   num arquivo. BAIXAR .LRC salva em Downloads.
+9. Ponha o arquivo nesta pasta como change.lrc. A partir dai vale pra qualquer
+   visitante, em qualquer navegador.
 
 Fora do modo SYNC, tocar numa linha pula a musica pra ela.
+
+
+ATENCAO AO AUDIO
+----------------
+
+Os tempos que voce marca valem pro arquivo que estava tocando. Trocar o MP3
+por outra versao da faixa (edicao de radio, remaster, ao vivo) desalinha tudo.
+Se a letra parece atrasada do inicio ao fim por um valor constante, TUDO +/-
+resolve; se ela desalinha progressivamente, o audio e outro.

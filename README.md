@@ -93,12 +93,29 @@ ativa é datilografada no ritmo do trecho — a velocidade sai do tempo que sobr
 até a próxima linha entrar — com rolagem automática (que cede a vez se você
 navegar com o dedo) e toque numa linha pra pular pra ela.
 
-Nenhuma letra vem no projeto — é material protegido. Você carrega a sua por
-`public/lyrics/change.txt` / `.lrc` (ambos no `.gitignore`) ou colando direto no
-painel, e nesse caso ela fica salva só no seu navegador. Como não dá pra
-adivinhar os tempos da faixa, o painel traz um sincronizador: modo **SYNC**,
-`Enter` (ou o botão) marca cada linha durante a reprodução, `±0,25s` corrige a
-última, e **BAIXAR .LRC** exporta o resultado.
+O projeto não vem com letra. Você carrega a sua por `public/lyrics/change.txt` /
+`.lrc` ou colando direto no painel.
+
+**Quem vê o quê.** O arquivo em `public/lyrics/` é servido a todo visitante; o
+rascunho colado/sincronizado fica no `localStorage` e é só seu, naquele aparelho.
+O rascunho tem precedência — então, depois de sincronizar, o que está na tela é
+a sua cópia, não a do público. `USAR A DO PROJETO` e `LIMPAR` descartam o
+rascunho e voltam pro arquivo.
+
+**Sincronizando.** Como não dá pra adivinhar os tempos da faixa, o painel traz um
+sincronizador: modo **SYNC**, `Enter` (ou o botão) marca cada linha durante a
+reprodução, `±0,25s` corrige a última, `DESFAZER` desmarca a última e volta o
+cursor, e `TUDO ±0,5s` desloca a letra inteira.
+
+O atalho que corta a maior parte do trabalho é `DERIVAR BLOCO DO GÊMEO`: refrão
+que volta idêntico não precisa ser remarcado. Marque só a primeira linha do bloco
+repetido e o resto sai dos intervalos internos da ocorrência já sincronizada,
+ancorados nessa marca — junto com a marcação de seção. Numa letra em que o refrão
+volta três vezes, isso troca ~28 marcações por ~3.
+
+Pra publicar: `COPIAR .LRC` (área de transferência) ou `BAIXAR .LRC`, e o arquivo
+vai pra `public/lyrics/change.lrc` versionado com o projeto. A partir daí vale
+pra qualquer visitante, sem ninguém precisar sincronizar de novo.
 
 Detalhes de formato em [public/lyrics/LEIA-ME.txt](public/lyrics/LEIA-ME.txt).
 
@@ -160,5 +177,6 @@ src/meaning.js    notas da faixa + marcação das palavras-chave
 src/lyrics.js     leitura de .lrc / texto simples, sincronia e exportação
 ```
 
-> Projeto conceitual não oficial. Nenhum áudio e nenhuma letra são distribuídos
-> com o repositório.
+> Projeto conceitual não oficial, sem fim comercial. O código não traz áudio nem
+> letra: o que for colocado em `public/music/` e `public/lyrics/` é conteúdo de
+> quem monta o site, e passa a ser servido a quem visitar.
