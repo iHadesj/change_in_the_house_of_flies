@@ -61,11 +61,13 @@ const LYRICS_PATHS = [
   `${import.meta.env.BASE_URL}lyrics/change.txt`,
 ];
 
+// Cada estágio carrega o trecho da letra que ele representa — em inglês, como
+// os títulos de `meaning.js`, porque a leitura em português vem no corpo.
 const STAGES = [
-  ["01", "OBSERVAÇÃO", ""],
-  ["02", "METAMORFOSE", ""],
-  ["03", "ASAS ARRANCADAS", ""],
-  ["04", "ZUMBIDO", ""],
+  ["01", "OBSERVAÇÃO", "I watched you change"],
+  ["02", "METAMORFOSE", "Into a fly"],
+  ["03", "ASAS ARRANCADAS", "I pulled off your wings / then I laughed"],
+  ["04", "ZUMBIDO", "Now you feel so alive"],
 ];
 
 /**
@@ -1560,17 +1562,18 @@ function App() {
           <div className="section-kicker">02 / A CASA</div>
 
           <div className="house-intro">
-            <h2>
-              ELA NÃO
+            <h2 lang="en">
+              IT’S LIKE YOU
               <br />
-              <em>DESABA.</em>
+              <em>NEVER HAD</em>
               <br />
-              ELA APODRECE.
+              WINGS.
             </h2>
             <p>
-              A estrutura cede no ritmo da faixa: quanto mais a música avança,
-              menos casa sobra e mais coisa voa dentro dela. Role a página ou
-              deixe a fita rodar — o resultado é o mesmo.
+              O refrão repete isso ao mesmo tempo em que diz que agora você se
+              sente viva. Sem asas e viva, juntos, sem escolher um dos dois — é
+              essa contradição que segura a faixa de pé enquanto tudo em volta
+              cai.
             </p>
           </div>
 
@@ -1585,7 +1588,7 @@ function App() {
                 <article className={active ? "active" : ""} key={label}>
                   <span>{number}</span>
                   <strong>{label}</strong>
-                  <p>{note}</p>
+                  <p lang="en">{note}</p>
                   <div className="stage-lines" aria-hidden="true">
                     {Array.from({ length: 10 }, (_, line) => (
                       <i

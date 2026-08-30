@@ -37,9 +37,9 @@ export const CANVAS_DPR = { low: 1, mid: 1.5, high: 2 }[TIER]
 export const CANVAS_FPS = { low: 24, mid: 30, high: 60 }[TIER]
 
 // Moscas de ambiente: mínimo no silêncio, máximo no fim da faixa (--decay = 1).
-export const FLY_MIN = { low: 5, mid: 9, high: 14 }[TIER]
-export const FLY_MAX = { low: 20, mid: 38, high: 74 }[TIER]
-export const BURST_CAP = { low: 60, mid: 120, high: 240 }[TIER]
+export const FLY_MIN = { low: 8, mid: 14, high: 20 }[TIER]
+export const FLY_MAX = { low: 34, mid: 68, high: 140 }[TIER]
+export const BURST_CAP = { low: 80, mid: 160, high: 320 }[TIER]
 
 // Colunas do enxame que faz as vezes de espectro no player.
 export const SWARM_COLUMNS = { low: 22, mid: 32, high: 52 }[TIER]

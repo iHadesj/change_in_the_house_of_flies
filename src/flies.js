@@ -5,20 +5,30 @@
 // Regras de custo que valem pros dois:
 //   - nada de shadowBlur, gradiente por partícula ou save/restore por quadro:
 //     tudo é drawImage de um sprite pré-renderizado;
-//   - a rotação também é pré-renderizada (8 ângulos), então nenhum quadro paga
-//     transformação de matriz por mosca;
+//   - a rotação também é pré-renderizada (12 ângulos × 2 batidas de asa), então
+//     nenhum quadro paga transformação de matriz por mosca;
 //   - o rAF respeita um alvo de fps e pula quadros em vez de rodar solto.
 
 import { BURST_CAP, CANVAS_DPR, CANVAS_FPS, FLY_MAX, FLY_MIN, SWARM_COLUMNS } from './perf.js'
 
-const ANGLE_STEPS = 8
-const SIZES = [5, 7, 11]
+const ANGLE_STEPS = 12
+// Duas aberturas de asa. Alternadas por quadro, o olho não resolve nenhuma das
+// duas e lê o borrão — que é como uma mosca de verdade se apresenta.
+const WING_BEATS = 2
+const SIZES = [6, 9, 13]
 const TAU = Math.PI * 2
+const RAD = Math.PI / 180
 
 const spriteCache = new Map()
 
-/** A mosca do projeto, desenhada no mesmo viewBox 24×24 do ícone SVG. */
-function paintFly(ctx, unit, color) {
+/**
+ * A mosca do projeto no viewBox 24×24 do ícone SVG, apontando pra cima.
+ *
+ * A anatomia é o que faz o bicho ser reconhecível a 9px: cabeça destacada,
+ * tórax curto e abdômen mais gordo e afilado atrás. Uma elipse só vira grão de
+ * poeira. As asas saem do tórax abertas em V pra trás; `beat` fecha as duas.
+ */
+function paintFly(ctx, unit, color, beat) {
   const ellipse = (cx, cy, rx, ry, rotation) => {
     ctx.beginPath()
     ctx.ellipse(cx * unit, cy * unit, rx * unit, ry * unit, rotation, 0, TAU)
@@ -26,15 +36,46 @@ function paintFly(ctx, unit, color) {
   }
 
   ctx.fillStyle = color
-  ellipse(12, 13, 2.1, 4.2, 0)
-  ctx.globalAlpha = 0.66
-  ellipse(7.4, 8.6, 4.6, 2.1, (-28 * Math.PI) / 180)
-  ellipse(16.6, 8.6, 4.6, 2.1, (28 * Math.PI) / 180)
+  ctx.strokeStyle = color
+
+  // Pernas: só nos tamanhos em que um traço ainda é um traço, e não um pixel
+  // cinza solto encostado no corpo. Curtas e recolhidas de propósito — esticadas
+  // elas passam da asa e o bicho vira aranha.
+  if (unit > 0.4) {
+    ctx.globalAlpha = 0.3
+    ctx.lineWidth = 0.5
+    ctx.lineCap = 'round'
+    ctx.beginPath()
+    for (const [x, y] of [
+      [8.4, 9.2],
+      [15.6, 9.2],
+      [8, 12.4],
+      [16, 12.4],
+      [9, 15.2],
+      [15, 15.2],
+    ]) {
+      ctx.moveTo(12 * unit, 11.5 * unit)
+      ctx.lineTo(x * unit, y * unit)
+    }
+    ctx.stroke()
+  }
+
+  // Asa translúcida e varrida pra trás, aberta ou colada no corpo.
+  const open = beat === 0 ? 1 : 0.3
+  ctx.globalAlpha = 0.4
+  ellipse(8.6, 13, 5, 1.9 * open, -53 * RAD)
+  ellipse(15.4, 13, 5, 1.9 * open, 53 * RAD)
+
   ctx.globalAlpha = 1
+  ellipse(12, 15.6, 2.5, 4.3, 0) // abdômen
+  ellipse(12, 10.4, 2.2, 2.9, 0) // tórax
+  ellipse(12, 6.6, 1.9, 1.8, 0) // cabeça
 }
 
-function buildSprite(size, angle, color, dpr) {
-  const box = Math.ceil(size * 1.6)
+function buildSprite(size, angle, beat, color, dpr) {
+  // 1.7 e não 1.4: a diagonal do glifo já ocupa a caixa inteira, e as asas
+  // abertas passam dela.
+  const box = Math.ceil(size * 1.7)
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(2, Math.round(box * dpr))
   canvas.height = canvas.width
@@ -45,14 +86,14 @@ function buildSprite(size, angle, color, dpr) {
   // O glifo aponta pra cima; +90° faz o ângulo 0 virar "andando pra direita".
   ctx.rotate(angle + Math.PI / 2)
   ctx.translate(-size / 2, -size / 2)
-  paintFly(ctx, size / 24, color)
+  paintFly(ctx, size / 24, color, beat)
 
   return { canvas, box }
 }
 
 /**
- * Conjunto [tamanho][ângulo] de sprites. O cache é global de propósito: o campo
- * de fundo e o medidor do player compartilham as mesmas texturas.
+ * Conjunto [tamanho][ângulo][batida] de sprites. O cache é global de propósito:
+ * o campo de fundo e o medidor do player compartilham as mesmas texturas.
  */
 export function getSprites(color, dpr = CANVAS_DPR) {
   const key = `${color}|${dpr}`
@@ -61,7 +102,9 @@ export function getSprites(color, dpr = CANVAS_DPR) {
 
   const set = SIZES.map((size) =>
     Array.from({ length: ANGLE_STEPS }, (_, index) =>
-      buildSprite(size, (index / ANGLE_STEPS) * TAU, color, dpr),
+      Array.from({ length: WING_BEATS }, (_, beat) =>
+        buildSprite(size, (index / ANGLE_STEPS) * TAU, beat, color, dpr),
+      ),
     ),
   )
   spriteCache.set(key, set)
@@ -89,9 +132,13 @@ class Fly {
     this.phase = Math.random() * TAU
     this.size = Math.random() < 0.62 ? 0 : Math.random() < 0.8 ? 1 : 2
     this.alpha = random(0.24, 0.72)
+    // Fase inicial sorteada: sem isso o enxame inteiro bate asa em uníssono,
+    // o que pisca em vez de borrar.
+    this.beat = Math.random() < 0.5 ? 0 : 1
   }
 
   step(delta, agitation, width, height) {
+    this.beat = (this.beat + 1) % WING_BEATS
     this.turnIn -= delta
     if (this.turnIn <= 0) {
       // Agitada, a mosca vira mais vezes e com ângulo maior.
@@ -135,9 +182,11 @@ class Burst {
     this.life = 0
     this.span = random(1.1, 2.1)
     this.size = Math.random() < 0.5 ? 0 : Math.random() < 0.75 ? 1 : 2
+    this.beat = Math.random() < 0.5 ? 0 : 1
   }
 
   step(delta) {
+    this.beat = (this.beat + 1) % WING_BEATS
     this.life += delta
     this.turnIn -= delta
     if (this.turnIn <= 0) {
@@ -251,7 +300,7 @@ export function createFlyField(canvas, options = {}) {
     if (alpha <= 0.01) return
     const turn = (((particle.direction % TAU) + TAU) % TAU) / TAU
     const angle = Math.min(ANGLE_STEPS - 1, Math.floor(turn * ANGLE_STEPS))
-    const sprite = sprites[particle.size][angle]
+    const sprite = sprites[particle.size][angle][particle.beat]
     const x = particle.x - sprite.box / 2
     const y = particle.y - sprite.box / 2
 
@@ -424,10 +473,14 @@ export function createSwarmMeter(canvas, options = {}) {
       const size = current > 0.62 ? 2 : current > 0.3 ? 1 : 0
       const set = sprites[size]
       const angleUp = Math.abs(Math.floor(phase[index] * 0.6)) % ANGLE_STEPS
-      const angleDown = (angleUp + 4) % ANGLE_STEPS
+      // Meia volta: a mosca de baixo aponta pro lado contrário da de cima.
+      const angleDown = (angleUp + ANGLE_STEPS / 2) % ANGLE_STEPS
+      // A batida corre bem mais rápido que a virada, e por coluna: colunas
+      // vizinhas nunca fecham a asa no mesmo quadro.
+      const beat = Math.abs(Math.floor(phase[index] * 7)) % WING_BEATS
 
       ctx.globalAlpha = 0.28 + current * 0.7
-      const top = set[angleUp]
+      const top = set[angleUp][beat]
       ctx.drawImage(
         top.canvas,
         x + drift - top.box / 2,
@@ -436,7 +489,7 @@ export function createSwarmMeter(canvas, options = {}) {
         top.box,
       )
 
-      const bottom = set[angleDown]
+      const bottom = set[angleDown][(beat + 1) % WING_BEATS]
       ctx.drawImage(
         bottom.canvas,
         x - drift - bottom.box / 2,

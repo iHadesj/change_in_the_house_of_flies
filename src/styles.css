@@ -1088,51 +1088,92 @@ input[type='range']::-moz-range-thumb {
   vector-effect: non-scaling-stroke;
   transform-box: fill-box;
   transform-origin: 50% 50%;
+  /* Progresso da própria peça: 0 até ela começar a ceder (--t), 1 no fim. O
+     recíproco (--k) vem pronto do JSX porque dividir por uma expressão dentro
+     de calc() não é aceito em todo motor. */
+  --p: max(0, (var(--rot-decay) - var(--t, 0)) * var(--k, 1));
+  /* A queda acelera: elevada ao quadrado, a casa segura no começo e despenca
+     no fim, que é a diferença entre deslizar e desabar. */
+  --fall: calc(var(--p) * var(--p));
   transform:
     translate(
-      calc(var(--dx) * var(--rot-decay) * 1px),
-      calc(var(--dy) * var(--rot-decay) * 1px)
+      calc(var(--dx) * var(--p) * 1px),
+      calc(var(--dy) * var(--p) * 1px + var(--fall) * 24px)
     )
-    rotate(calc(var(--r) * var(--rot-decay) * 1deg));
+    rotate(calc(var(--r) * var(--p) * 1deg));
 }
 
 .house-solid path {
   stroke: var(--bone);
-  opacity: calc(1 - var(--rot-decay) * 0.42);
+  /* Por peça, e não pela casa inteira: o que já caiu apaga, o que ainda está
+     de pé continua sólido. */
+  opacity: calc(1 - var(--p) * 0.72);
 }
 
 /* A cópia verde deslocada faz as vezes de glitch cromático sem custar filtro. */
 .house-ghost {
-  transform: translate(calc(var(--rot-decay) * 5px), calc(var(--rot-decay) * -3px));
+  transform: translate(calc(var(--rot-decay) * 11px), calc(var(--rot-decay) * -7px));
 }
 
 .house-ghost path {
   stroke: var(--rot);
-  opacity: calc(var(--rot-decay) * 0.6);
+  opacity: calc(var(--rot-decay) * 0.72);
 }
 
 /* A luz verde acendendo nas janelas: é o que mora lá dentro. */
 .house-glow {
   fill: var(--rot);
-  opacity: calc(var(--rot-decay) * 0.42);
+  opacity: calc(var(--rot-decay) * 0.55);
 }
 
+/* O grupo carrega o quanto de mosca a casa está soltando; a mosca em si só
+   cuida do próprio voo. Separado porque a animação de `opacity` do voo
+   sobrescreveria qualquer opacidade declarada no mesmo elemento. */
+.house-leaks { opacity: 0; }
+
+.is-rotting .house-leaks { opacity: calc(var(--rot-decay) * 0.95); }
+
 .house-leak {
-  fill: var(--rot-hot);
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
   opacity: 0;
 }
 
+.leak-body { fill: var(--rot-hot); }
+
+/* Asa translúcida: é o que separa mosca de bolinha subindo. */
+.leak-wing {
+  fill: var(--rot-hot);
+  opacity: 0.4;
+}
+
 .is-rotting .house-leak {
-  opacity: calc(var(--rot-decay) * 0.85);
-  animation: leak 3.6s ease-in-out infinite;
-  animation-delay: calc(var(--i) * -0.57s);
+  animation: leak 3.2s ease-in-out infinite;
+  animation-delay: calc(var(--i) * -0.31s);
+}
+
+/* O bater não precisa ser fiel — precisa ser rápido demais pro olho resolver,
+   que é exatamente como uma mosca real se lê. */
+.is-rotting .leak-wing {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  animation: leak-wing 90ms linear infinite;
+  animation-delay: calc(var(--i) * -13ms);
 }
 
 @keyframes leak {
-  0% { transform: translate(0, 0); opacity: 0; }
-  22% { opacity: 0.85; }
-  100% { transform: translate(calc(6px - var(--i) * 2px), -46px); opacity: 0; }
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 0; }
+  16% { opacity: 1; }
+  68% { opacity: 0.8; }
+  100% {
+    transform:
+      translate(calc(var(--lx) * 1px), calc(var(--ly) * -1px))
+      rotate(calc(var(--lr) * 1deg));
+    opacity: 0;
+  }
 }
+
+@keyframes leak-wing { to { transform: scaleY(0.28); } }
 
 .house-readout {
   display: grid;
